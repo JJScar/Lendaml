@@ -2,12 +2,31 @@
 set -eo pipefail
 
 if [ -z "$1" ]; then
-  echo "Usage: $0 <iterations>"
+  echo "Usage: $0 <iterations>  (run from the project root)"
   exit 1
 fi
 
-# jq filter to extract streaming text from assistant messages
-stream_text='select(.type == "assistant").message.content[]? | select(.type == "text").text // empty | gsub("\n"; "\r\n") | . + "\r\n\n"'
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# jq filter to extract streaming text, plus a progress line for tool calls
+# (otherwise long-running tools like SDK installs look like a silent hang)
+stream_text='
+  (
+    if .type == "assistant" then
+      .message.content[]? |
+      if .type == "text" then .text
+      elif .type == "tool_use" then
+        "\n$ " + .name + (
+          if .input.command then ": " + .input.command
+          elif .input.file_path then ": " + .input.file_path
+          else "" end
+        )
+      else empty end
+    elif .type == "user" then
+      .message.content[]? | select(.type == "tool_result") | "  ...done"
+    else empty end
+  ) | select(. != null) | gsub("\n"; "\r\n") | . + "\r\n\n"
+'
 
 # jq filter to extract final result
 final_result='select(.type == "result").result // empty'
@@ -17,14 +36,14 @@ for ((i=1; i<=$1; i++)); do
   trap "rm -f $tmpfile" EXIT
 
   commits=$(git log -n 5 --format="%H%n%ad%n%B---" --date=short 2>/dev/null || echo "No commits found")
-  issues=$(cat issues/*.md 2>/dev/null || echo "No issues found")
-  prompt=$(cat ralph/prompt.md)
+  tickets=$(cat tickets.md 2>/dev/null || echo "No tickets found")
+  prompt=$(cat "$SCRIPT_DIR/prompt.md")
 
   docker sandbox run claude . -- \
     --verbose \
     --print \
     --output-format stream-json \
-    "Previous commits: $commits Issues: $issues $prompt" \
+    "Previous commits: $commits Tickets: $tickets $prompt" \
   | grep --line-buffered '^{' \
   | tee "$tmpfile" \
   | jq --unbuffered -rj "$stream_text"

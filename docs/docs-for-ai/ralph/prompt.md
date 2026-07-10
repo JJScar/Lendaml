@@ -1,12 +1,12 @@
-# ISSUES
+# TICKETS
 
-Local issue files from `issues/` are provided at start of context. Parse them to understand the open issues.
+`tickets.md` (the project's Kanban board, at the repo root) is provided at start of context. Parse it to understand the backlog. Domain vocabulary comes from `CONTEXT.md`; architectural decisions from `docs/adr/0001`-`0003`.
 
-You will work on the AFK issues only, not the HITL ones.
+Work the frontier: pick a ticket whose "Blocked by" items are all already done (checklist fully checked off). If several qualify, prefer the one listed first in the file.
 
 You've also been passed a file containing the last few commits. Review these to understand what work has been done.
 
-If all AFK tasks are complete, output <promise>NO MORE TASKS</promise>.
+If every ticket's checklist is fully checked off, output <promise>NO MORE TASKS</promise>.
 
 # TASK SELECTION
 
@@ -36,10 +36,12 @@ Use /tdd to complete the task.
 
 # FEEDBACK LOOPS
 
-Before committing, run the feedback loops:
+Before committing, run the feedback loops for this Daml project:
 
-- `npm run test` to run the tests
-- `npm run typecheck` to run the type checker
+- `daml build` to compile
+- `daml test` (or the Daml Script scenarios named in the ticket) to run tests
+
+If this tooling doesn't exist yet (e.g. no `daml.yaml`), setting it up is part of the first ticket.
 
 # COMMIT
 
@@ -49,11 +51,11 @@ Make a git commit. The commit message must:
 2. Include files changed
 3. Blockers or notes for next iteration
 
-# THE ISSUE
+# THE TICKET
 
-If the task is complete, move the issue file to `issues/done/`.
+If the task is complete, check off its checklist items in `tickets.md`.
 
-If the task is not complete, add a note to the issue file with what was done.
+If the task is not complete, add a short note under the ticket in `tickets.md` describing what was done and what's left.
 
 # FINAL RULES
 

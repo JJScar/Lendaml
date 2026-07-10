@@ -1,0 +1,7 @@
+module Types where
+
+-- | The two fixed asset types supported by the demo (CONTEXT.md).
+data AssetType
+  = LoanAsset
+  | CollateralAsset
+  deriving (Eq, Show, Ord)

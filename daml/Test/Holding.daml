@@ -1,0 +1,84 @@
+module Test.Holding where
+
+import DA.Assert ((===))
+import Daml.Script
+import Holding
+import Types (AssetType(..))
+
+-- | Mint a Holding of each asset type, transfer one to another party,
+-- and assert the resulting ownership.
+testMintAndTransfer : Script ()
+testMintAndTransfer = do
+  lender <- allocateParty "Lender"
+  borrower <- allocateParty "Borrower"
+
+  loanHolding <- submit lender do
+    createCmd Holding with
+      issuer = lender
+      owner = lender
+      amount = 1000.0
+      assetType = LoanAsset
+
+  collateralHolding <- submit borrower do
+    createCmd Holding with
+      issuer = borrower
+      owner = borrower
+      amount = 5.0
+      assetType = CollateralAsset
+
+  transferredCid <- submit lender do
+    exerciseCmd loanHolding Transfer with newOwner = borrower
+
+  Some transferred <- queryContractId borrower transferredCid
+  transferred.owner === borrower
+  transferred.issuer === lender
+  transferred.amount === 1000.0
+  transferred.assetType === LoanAsset
+
+  Some untouched <- queryContractId borrower collateralHolding
+  untouched.owner === borrower
+
+-- | A Holding is only visible to its owner/issuer, not an arbitrary third party.
+testVisibility : Script ()
+testVisibility = do
+  lender <- allocateParty "Lender"
+  borrower <- allocateParty "Borrower"
+  outsider <- allocateParty "Outsider"
+
+  holdingCid <- submit lender do
+    createCmd Holding with
+      issuer = lender
+      owner = lender
+      amount = 100.0
+      assetType = LoanAsset
+
+  ownerView <- queryContractId lender holdingCid
+  ownerView === Some Holding with
+    issuer = lender
+    owner = lender
+    amount = 100.0
+    assetType = LoanAsset
+
+  outsiderView <- queryContractId outsider holdingCid
+  outsiderView === None
+
+  transferredCid <- submit lender do
+    exerciseCmd holdingCid Transfer with newOwner = borrower
+
+  newOwnerView <- queryContractId borrower transferredCid
+  newOwnerView === Some Holding with
+    issuer = lender
+    owner = borrower
+    amount = 100.0
+    assetType = LoanAsset
+
+  -- lender remains the issuer (signatory), so they keep visibility after transfer
+  issuerViewAfterTransfer <- queryContractId lender transferredCid
+  issuerViewAfterTransfer === Some Holding with
+    issuer = lender
+    owner = borrower
+    amount = 100.0
+    assetType = LoanAsset
+
+  outsiderViewAfterTransfer <- queryContractId outsider transferredCid
+  outsiderViewAfterTransfer === None

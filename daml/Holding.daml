@@ -1,0 +1,22 @@
+module Holding where
+
+import Types (AssetType)
+
+-- | Self-contained fungible asset contract (CONTEXT.md, ADR 0002).
+-- Not the Canton Network Token Standard — scoped entirely to this demo.
+template Holding
+  with
+    issuer : Party
+    owner : Party
+    amount : Decimal
+    assetType : AssetType
+  where
+    signatory issuer
+    observer owner
+
+    choice Transfer : ContractId Holding
+      with
+        newOwner : Party
+      controller owner
+      do
+        create this with owner = newOwner
