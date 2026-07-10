@@ -1,0 +1,3 @@
+# Self-contained custom asset contracts instead of the Canton Network Token Standard
+
+Loans need to move and lock value (loaned currency, collateral). We could implement Daml's official Token Standard interfaces (Holding, TransferInstruction, etc.) to make the protocol interoperable with real Canton token implementations, or define our own minimal fungible asset contract scoped to this demo. We chose the self-contained custom model: this is a practice project focused on learning the lending/borrowing domain logic and Canton's privacy model, not token infrastructure, and pulling in the Token Standard now would add real learning overhead without changing what the demo is meant to teach. This can be revisited if the project moves toward interoperating with real assets.

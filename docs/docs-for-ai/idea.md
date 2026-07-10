@@ -1,0 +1,1 @@
+Canton ecosystem has been exploding. I think to practise building demo code, let's start with building a lending and borrowing protocol. Of course, this cannot be like Aave because Aave is on global stateless blockchains. This protocol needs to be a bit different, and it needs to follow Canton rules and Damon rules to be able to preserve the privacy while having the logic. 

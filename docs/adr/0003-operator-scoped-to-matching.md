@@ -1,0 +1,3 @@
+# Operator's authority ends at matching; it is not an observer on live Loans
+
+Once a Loan Offer and Loan Request are matched, the Operator could remain an observer on the resulting Loan (giving it ongoing visibility, useful for protocol-wide stats or dispute mediation) or step back entirely, leaving the Loan signed only by Lender and Borrower plus whatever visibility Oracle/Liquidator need to do their jobs. We chose to have the Operator step back: it is a matchmaker, not an overseer, and every Loan it stays attached to leaks that position's existence and size to it indefinitely. This keeps the privacy story consistent with the rest of the protocol (ADR 0001) at the cost of the Operator never being able to report aggregate protocol activity.
