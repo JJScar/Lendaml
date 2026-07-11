@@ -9,8 +9,6 @@ A privacy-preserving lending and borrowing protocol on the Canton network, built
 - Loans are overcollateralized. An **Oracle** publishes signed **Price** contracts used to compute each Loan's Collateral Ratio.
 - Borrowers can partially or fully **repay**, or **top up** collateral. If the Collateral Ratio falls below the liquidation threshold, a **Liquidator** can **liquidate** the Loan, seizing collateral (minus a bonus) to make the Lender whole.
 
-Full domain vocabulary (Lender, Borrower, Operator, Collateral Ratio, etc.) is defined in [`CONTEXT.md`](./CONTEXT.md).
-
 ## Project structure
 
 ```
@@ -24,7 +22,6 @@ daml/
   Loan.daml          The bilateral loan: repay, top-up, liquidate
   Test/              Daml Script test scenarios, one module per template
 daml.yaml            Daml SDK project config
-tickets.md           Development backlog / build log (ticket-by-ticket design notes)
 ```
 
 ## Building and testing
@@ -38,4 +35,4 @@ daml test    # run all Daml Script test scenarios
 
 ## Status
 
-All planned tickets are implemented and passing: Holdings (mint/transfer), Oracle Price publishing, Loan Offer/Request post & cancel, Operator matching, partial/full repayment, collateral top-up, and liquidation. See `tickets.md` for the detailed, ticket-by-ticket design log.
+All planned tickets are implemented and passing: Holdings (mint/transfer), Oracle Price publishing, Loan Offer/Request post & cancel, Operator matching, partial/full repayment, collateral top-up, and liquidation.
