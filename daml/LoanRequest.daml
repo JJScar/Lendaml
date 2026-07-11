@@ -1,0 +1,25 @@
+module LoanRequest where
+
+import Types (AssetType)
+
+-- | A Borrower's standing proposal to borrow an amount of the Loan Asset,
+-- backed by specified collateral, at a maximum acceptable rate, submitted
+-- to the Operator for matching (CONTEXT.md). The Operator is an observer
+-- so it can see the Request in order to match it, but holds no other
+-- authority over it.
+template LoanRequest
+  with
+    borrower : Party
+    operator : Party
+    amount : Decimal
+    collateralAssetType : AssetType
+    collateralAmount : Decimal
+    maxRate : Decimal
+  where
+    signatory borrower
+    observer operator
+
+    choice Cancel : ()
+      controller borrower
+      do
+        pure ()

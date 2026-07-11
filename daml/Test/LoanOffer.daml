@@ -1,0 +1,52 @@
+module Test.LoanOffer where
+
+import DA.Assert ((===))
+import Daml.Script
+import LoanOffer
+
+-- | A Lender posts a Loan Offer and cancels it before it is matched.
+testPostAndCancel : Script ()
+testPostAndCancel = do
+  lender <- allocateParty "Lender"
+  operator <- allocateParty "Operator"
+
+  offerCid <- submit lender do
+    createCmd LoanOffer with
+      lender = lender
+      operator = operator
+      amount = 1000.0
+      minRate = 0.05
+
+  submit lender do
+    exerciseCmd offerCid Cancel
+
+  cancelledView <- queryContractId lender offerCid
+  cancelledView === None
+
+-- | An unmatched Loan Offer is visible only to its Lender and the
+-- Operator, not to an arbitrary third-party Lender.
+testVisibility : Script ()
+testVisibility = do
+  lender <- allocateParty "Lender"
+  operator <- allocateParty "Operator"
+  otherLender <- allocateParty "OtherLender"
+
+  offerCid <- submit lender do
+    createCmd LoanOffer with
+      lender = lender
+      operator = operator
+      amount = 1000.0
+      minRate = 0.05
+
+  lenderView <- queryContractId lender offerCid
+  lenderView === Some LoanOffer with
+    lender = lender
+    operator = operator
+    amount = 1000.0
+    minRate = 0.05
+
+  operatorView <- queryContractId operator offerCid
+  operatorView === lenderView
+
+  otherLenderView <- queryContractId otherLender offerCid
+  otherLenderView === None

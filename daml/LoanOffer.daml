@@ -1,0 +1,20 @@
+module LoanOffer where
+
+-- | A Lender's standing proposal to lend an amount of the Loan Asset at a
+-- minimum acceptable rate, submitted to the Operator for matching
+-- (CONTEXT.md). The Operator is an observer so it can see the Offer in
+-- order to match it, but holds no other authority over it.
+template LoanOffer
+  with
+    lender : Party
+    operator : Party
+    amount : Decimal
+    minRate : Decimal
+  where
+    signatory lender
+    observer operator
+
+    choice Cancel : ()
+      controller lender
+      do
+        pure ()

@@ -1,0 +1,59 @@
+module Test.LoanRequest where
+
+import DA.Assert ((===))
+import Daml.Script
+import LoanRequest
+import Types (AssetType(..))
+
+-- | A Borrower posts a Loan Request and cancels it before it is matched.
+testPostAndCancel : Script ()
+testPostAndCancel = do
+  borrower <- allocateParty "Borrower"
+  operator <- allocateParty "Operator"
+
+  requestCid <- submit borrower do
+    createCmd LoanRequest with
+      borrower = borrower
+      operator = operator
+      amount = 1000.0
+      collateralAssetType = CollateralAsset
+      collateralAmount = 1.0
+      maxRate = 0.08
+
+  submit borrower do
+    exerciseCmd requestCid Cancel
+
+  cancelledView <- queryContractId borrower requestCid
+  cancelledView === None
+
+-- | An unmatched Loan Request is visible only to its Borrower and the
+-- Operator, not to an arbitrary third-party Borrower.
+testVisibility : Script ()
+testVisibility = do
+  borrower <- allocateParty "Borrower"
+  operator <- allocateParty "Operator"
+  otherBorrower <- allocateParty "OtherBorrower"
+
+  requestCid <- submit borrower do
+    createCmd LoanRequest with
+      borrower = borrower
+      operator = operator
+      amount = 1000.0
+      collateralAssetType = CollateralAsset
+      collateralAmount = 1.0
+      maxRate = 0.08
+
+  borrowerView <- queryContractId borrower requestCid
+  borrowerView === Some LoanRequest with
+    borrower = borrower
+    operator = operator
+    amount = 1000.0
+    collateralAssetType = CollateralAsset
+    collateralAmount = 1.0
+    maxRate = 0.08
+
+  operatorView <- queryContractId operator requestCid
+  operatorView === borrowerView
+
+  otherBorrowerView <- queryContractId otherBorrower requestCid
+  otherBorrowerView === None
