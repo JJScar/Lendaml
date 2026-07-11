@@ -1,5 +1,12 @@
 module LoanOffer where
 
+import qualified LoanRequest
+import Constants (liquidationThreshold)
+import Holding (Holding, Transfer(..), Lock(..))
+import Loan (Loan(..))
+import Price (Price(..))
+import Types (AssetType(..))
+
 -- | A Lender's standing proposal to lend an amount of the Loan Asset at a
 -- minimum acceptable rate, submitted to the Operator for matching
 -- (CONTEXT.md). The Operator is an observer so it can see the Offer in
@@ -18,3 +25,55 @@ template LoanOffer
       controller lender
       do
         pure ()
+
+    -- | Matches this Offer against a compatible Loan Request, picks a fixed
+    -- rate, and creates the resulting Loan. Requires the Lender's and
+    -- Borrower's authority (not just the Operator's) since it moves the
+    -- Lender's Loan Asset Holding and locks the Borrower's collateral
+    -- Holding — the Operator never custodies either (ADR 0001). Both
+    -- Offer (this contract) and Request are archived; the Loan is signed
+    -- solely by Lender and Borrower (ADR 0003).
+    choice Match : ContractId Loan
+      with
+        loanRequestCid : ContractId LoanRequest.LoanRequest
+        borrower : Party
+        lenderHoldingCid : ContractId Holding
+        collateralHoldingCid : ContractId Holding
+        loanAssetPriceCid : ContractId Price
+        collateralAssetPriceCid : ContractId Price
+        rate : Decimal
+      controller operator, lender, borrower
+      do
+        request <- fetch loanRequestCid
+        assertMsg "Loan Request must belong to the given Borrower" (request.borrower == borrower)
+        assertMsg "matched amounts must be exactly equal" (request.amount == amount)
+        assertMsg "Borrower's max rate must be >= Lender's min rate" (request.maxRate >= minRate)
+        assertMsg "chosen rate must fall within [minRate, maxRate]" (rate >= minRate && rate <= request.maxRate)
+
+        loanAssetPrice <- fetch loanAssetPriceCid
+        assertMsg "loan asset price must be for LoanAsset" (loanAssetPrice.assetType == LoanAsset)
+        collateralAssetPrice <- fetch collateralAssetPriceCid
+        assertMsg "collateral asset price must match the Request's collateral asset type" (collateralAssetPrice.assetType == request.collateralAssetType)
+
+        let outstandingValue = amount * loanAssetPrice.value
+            collateralValue = request.collateralAmount * collateralAssetPrice.value
+        assertMsg "collateral must clear the Liquidation Threshold" (collateralValue / outstandingValue >= liquidationThreshold)
+
+        lenderHolding <- fetch lenderHoldingCid
+        assertMsg "lender Holding must belong to the Lender and match the Offer amount" (lenderHolding.owner == lender && lenderHolding.amount == amount && lenderHolding.assetType == LoanAsset)
+        collateralHolding <- fetch collateralHoldingCid
+        assertMsg "collateral Holding must belong to the Borrower and match the Request" (collateralHolding.owner == borrower && collateralHolding.amount == request.collateralAmount && collateralHolding.assetType == request.collateralAssetType)
+
+        exercise loanRequestCid LoanRequest.Cancel
+        exercise lenderHoldingCid Transfer with newOwner = borrower
+        exercise collateralHoldingCid Lock
+
+        now <- getTime
+        create Loan with
+          lender
+          borrower
+          principal = amount
+          collateralAssetType = request.collateralAssetType
+          collateralAmount = request.collateralAmount
+          rate
+          lastUpdated = now

@@ -1,0 +1,7 @@
+module Constants where
+
+-- | Minimum Collateral Ratio a Loan may hold, reused both as the minimum
+-- ratio required to originate a Loan Request and as the Liquidation
+-- trigger point (CONTEXT.md, spec decisions). Hardcoded, not governed.
+liquidationThreshold : Decimal
+liquidationThreshold = 1.5

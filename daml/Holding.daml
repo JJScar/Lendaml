@@ -20,3 +20,11 @@ template Holding
       controller owner
       do
         create this with owner = newOwner
+
+    -- | Consumes the Holding with no successor contract, for callers (e.g.
+    -- Loan matching) that need to take it out of circulation because its
+    -- value is now tracked elsewhere (e.g. as locked collateral on a Loan).
+    choice Lock : ()
+      controller owner
+      do
+        pure ()

@@ -1,0 +1,165 @@
+module Test.Loan where
+
+import DA.Assert ((===))
+import Daml.Script
+import Holding
+import LoanOffer (LoanOffer(..), Match(..))
+import LoanRequest (LoanRequest(..))
+import Price
+import Types (AssetType(..))
+
+-- | Full happy-path match: Lender's Loan Asset moves to the Borrower,
+-- Borrower's collateral Holding is locked (archived), both Offer and
+-- Request are archived, the resulting Loan has the expected fields and
+-- is signed only by Lender + Borrower — the Operator cannot see it.
+testHappyPathMatch : Script ()
+testHappyPathMatch = do
+  lender <- allocateParty "Lender"
+  borrower <- allocateParty "Borrower"
+  operator <- allocateParty "Operator"
+  oracle <- allocateParty "Oracle"
+
+  loanPriceCid <- submit oracle do
+    createCmd Price with
+      oracle
+      assetType = LoanAsset
+      value = 1.0
+      observers = [operator, lender, borrower]
+
+  collateralPriceCid <- submit oracle do
+    createCmd Price with
+      oracle
+      assetType = CollateralAsset
+      value = 2000.0
+      observers = [operator, lender, borrower]
+
+  lenderHoldingCid <- submit lender do
+    createCmd Holding with
+      issuer = lender
+      owner = lender
+      amount = 1000.0
+      assetType = LoanAsset
+
+  collateralHoldingCid <- submit borrower do
+    createCmd Holding with
+      issuer = borrower
+      owner = borrower
+      amount = 1.0
+      assetType = CollateralAsset
+
+  offerCid <- submit lender do
+    createCmd LoanOffer with
+      lender
+      operator
+      amount = 1000.0
+      minRate = 0.05
+
+  requestCid <- submit borrower do
+    createCmd LoanRequest with
+      borrower
+      operator
+      amount = 1000.0
+      collateralAssetType = CollateralAsset
+      collateralAmount = 1.0
+      maxRate = 0.08
+
+  loanCid <- submit (actAs [operator, lender, borrower]) do
+    exerciseCmd offerCid Match with
+      loanRequestCid = requestCid
+      borrower
+      lenderHoldingCid
+      collateralHoldingCid
+      loanAssetPriceCid = loanPriceCid
+      collateralAssetPriceCid = collateralPriceCid
+      rate = 0.06
+
+  Some loan <- queryContractId lender loanCid
+  loan.lender === lender
+  loan.borrower === borrower
+  loan.principal === 1000.0
+  loan.collateralAssetType === CollateralAsset
+  loan.collateralAmount === 1.0
+  loan.rate === 0.06
+
+  -- the Offer and Request are both archived
+  offerAfter <- queryContractId lender offerCid
+  offerAfter === None
+  requestAfter <- queryContractId borrower requestCid
+  requestAfter === None
+
+  -- the Borrower's collateral Holding was locked (archived), not just left in place
+  collateralAfter <- queryContractId borrower collateralHoldingCid
+  collateralAfter === None
+
+  -- the Lender's Loan Asset Holding moved to the Borrower
+  borrowerHoldings <- query @Holding borrower
+  any (\(_, h) -> h.owner == borrower && h.issuer == lender && h.amount == 1000.0 && h.assetType == LoanAsset) borrowerHoldings === True
+
+  -- the Operator matched the Loan but has no ongoing visibility into it
+  operatorView <- queryContractId operator loanCid
+  operatorView === None
+
+-- | A Loan Request whose proposed collateral does not clear the
+-- Liquidation Threshold at the Oracle's current Price cannot be matched.
+testInsufficientCollateralCannotBeMatched : Script ()
+testInsufficientCollateralCannotBeMatched = do
+  lender <- allocateParty "Lender"
+  borrower <- allocateParty "Borrower"
+  operator <- allocateParty "Operator"
+  oracle <- allocateParty "Oracle"
+
+  loanPriceCid <- submit oracle do
+    createCmd Price with
+      oracle
+      assetType = LoanAsset
+      value = 1.0
+      observers = [operator, lender, borrower]
+
+  collateralPriceCid <- submit oracle do
+    createCmd Price with
+      oracle
+      assetType = CollateralAsset
+      value = 2000.0
+      observers = [operator, lender, borrower]
+
+  lenderHoldingCid <- submit lender do
+    createCmd Holding with
+      issuer = lender
+      owner = lender
+      amount = 1000.0
+      assetType = LoanAsset
+
+  -- 0.1 CollateralAsset at 2000 = $200 of collateral against $1000
+  -- borrowed: a 0.2 ratio, well under the 1.5 Liquidation Threshold.
+  collateralHoldingCid <- submit borrower do
+    createCmd Holding with
+      issuer = borrower
+      owner = borrower
+      amount = 0.1
+      assetType = CollateralAsset
+
+  offerCid <- submit lender do
+    createCmd LoanOffer with
+      lender
+      operator
+      amount = 1000.0
+      minRate = 0.05
+
+  requestCid <- submit borrower do
+    createCmd LoanRequest with
+      borrower
+      operator
+      amount = 1000.0
+      collateralAssetType = CollateralAsset
+      collateralAmount = 0.1
+      maxRate = 0.08
+
+  submitMustFail (actAs [operator, lender, borrower]) do
+    exerciseCmd offerCid Match with
+      loanRequestCid = requestCid
+      borrower
+      lenderHoldingCid
+      collateralHoldingCid
+      loanAssetPriceCid = loanPriceCid
+      collateralAssetPriceCid = collateralPriceCid
+      rate = 0.06

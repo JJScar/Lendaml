@@ -1,0 +1,19 @@
+module Loan where
+
+import Types (AssetType)
+
+-- | A bilateral contract between exactly one Lender and Borrower, created
+-- when the Operator matches a Loan Offer to a Loan Request (CONTEXT.md).
+-- Signed by Lender and Borrower only — the Operator holds no ongoing
+-- signatory or observer role once the Loan exists (ADR 0003).
+template Loan
+  with
+    lender : Party
+    borrower : Party
+    principal : Decimal
+    collateralAssetType : AssetType
+    collateralAmount : Decimal
+    rate : Decimal
+    lastUpdated : Time
+  where
+    signatory lender, borrower
