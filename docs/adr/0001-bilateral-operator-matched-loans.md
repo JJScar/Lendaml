@@ -1,3 +1,0 @@
-# Bilateral, operator-matched loans instead of a pooled model
-
-Aave-style protocols pool all deposits into shared liquidity with globally-visible utilization and rates. Canton only discloses contract state to signatories/observers, so a "global pool" that every user can see doesn't fit the platform's privacy model. We chose bilateral Loan contracts between exactly one Lender and one Borrower, discovered via an Operator that matches Loan Offers to Loan Requests but never custodies funds itself. This trades away Aave's capital efficiency (instant liquidity from a shared pool) for privacy-by-construction (a position is only ever visible to its two counterparties and the Operator).

@@ -1,2 +1,6 @@
 .daml/
 .claude/settings.local.json
+.vscode/
+
+# Internal working notes / agent scaffolding — never pushed
+docs/
