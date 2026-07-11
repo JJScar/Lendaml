@@ -1,0 +1,157 @@
+module Test.Repay where
+
+import DA.Assert ((===))
+import DA.Time (days)
+import Daml.Script
+import Holding
+import Loan (Loan(..), Repay(..))
+import LoanOffer (LoanOffer(..), Match(..))
+import LoanRequest (LoanRequest(..))
+import Price
+import Types (AssetType(..))
+
+-- | Sets up a matched Loan (1000 principal, 10% rate, 2 CollateralAsset
+-- @ 2000 = 4000 collateral against 1000 borrowed — well clear of the
+-- 1.5 Liquidation Threshold) so repayment scenarios don't need to repeat
+-- the full offer/request/match dance.
+setupLoan : Script (Party, Party, Party, ContractId Loan)
+setupLoan = do
+  lender <- allocateParty "Lender"
+  borrower <- allocateParty "Borrower"
+  operator <- allocateParty "Operator"
+  oracle <- allocateParty "Oracle"
+
+  loanPriceCid <- submit oracle do
+    createCmd Price with
+      oracle
+      assetType = LoanAsset
+      value = 1.0
+      observers = [operator, lender, borrower]
+
+  collateralPriceCid <- submit oracle do
+    createCmd Price with
+      oracle
+      assetType = CollateralAsset
+      value = 2000.0
+      observers = [operator, lender, borrower]
+
+  lenderHoldingCid <- submit lender do
+    createCmd Holding with
+      issuer = lender
+      owner = lender
+      amount = 1000.0
+      assetType = LoanAsset
+
+  collateralHoldingCid <- submit borrower do
+    createCmd Holding with
+      issuer = borrower
+      owner = borrower
+      amount = 2.0
+      assetType = CollateralAsset
+
+  offerCid <- submit lender do
+    createCmd LoanOffer with
+      lender
+      operator
+      amount = 1000.0
+      minRate = 0.05
+
+  requestCid <- submit borrower do
+    createCmd LoanRequest with
+      borrower
+      operator
+      amount = 1000.0
+      collateralAssetType = CollateralAsset
+      collateralAmount = 2.0
+      maxRate = 0.15
+
+  loanCid <- submit (actAs [operator, lender, borrower]) do
+    exerciseCmd offerCid Match with
+      loanRequestCid = requestCid
+      borrower
+      lenderHoldingCid
+      collateralHoldingCid
+      loanAssetPriceCid = loanPriceCid
+      collateralAssetPriceCid = collateralPriceCid
+      rate = 0.10
+
+  pure (lender, borrower, operator, loanCid)
+
+-- | A partial repayment, made a year after matching so interest has
+-- accrued (1000 x 0.10 x 1 = 100, so Outstanding Balance = 1100),
+-- reduces principal by the repaid amount and keeps the Loan open.
+testPartialRepay : Script ()
+testPartialRepay = do
+  (lender, borrower, _operator, loanCid) <- setupLoan
+
+  passTime (days 365)
+
+  repaymentHoldingCid <- submit borrower do
+    createCmd Holding with
+      issuer = borrower
+      owner = borrower
+      amount = 500.0
+      assetType = LoanAsset
+
+  Some newLoanCid <- submit borrower do
+    exerciseCmd loanCid Repay with repaymentHoldingCid
+
+  -- the old Loan is archived, replaced by one with reduced principal
+  oldLoanView <- queryContractId borrower loanCid
+  oldLoanView === None
+
+  Some newLoan <- queryContractId borrower newLoanCid
+  newLoan.principal === 600.0
+  newLoan.collateralAssetType === CollateralAsset
+  newLoan.collateralAmount === 2.0
+  newLoan.rate === 0.10
+
+  -- the repayment moved to the Lender as a Holding
+  lenderHoldings <- query @Holding lender
+  any (\(_, h) -> h.owner == lender && h.amount == 500.0 && h.assetType == LoanAsset) lenderHoldings === True
+
+-- | Repaying the full Outstanding Balance (here, exactly principal since
+-- no time has passed and no interest has accrued) archives the Loan and
+-- releases all locked collateral back to the Borrower.
+testFullRepay : Script ()
+testFullRepay = do
+  (lender, borrower, _operator, loanCid) <- setupLoan
+
+  repaymentHoldingCid <- submit borrower do
+    createCmd Holding with
+      issuer = borrower
+      owner = borrower
+      amount = 1000.0
+      assetType = LoanAsset
+
+  result <- submit borrower do
+    exerciseCmd loanCid Repay with repaymentHoldingCid
+
+  result === None
+
+  loanView <- queryContractId borrower loanCid
+  loanView === None
+
+  -- the Borrower gets a fresh Holding for the full amount of collateral
+  -- that was locked into the Loan
+  borrowerHoldings <- query @Holding borrower
+  any (\(_, h) -> h.owner == borrower && h.amount == 2.0 && h.assetType == CollateralAsset) borrowerHoldings === True
+
+  -- the repayment moved to the Lender as a Holding
+  lenderHoldings <- query @Holding lender
+  any (\(_, h) -> h.owner == lender && h.amount == 1000.0 && h.assetType == LoanAsset) lenderHoldings === True
+
+-- | Attempting to repay more than the current Outstanding Balance fails.
+testCannotRepayMoreThanOwed : Script ()
+testCannotRepayMoreThanOwed = do
+  (_lender, borrower, _operator, loanCid) <- setupLoan
+
+  repaymentHoldingCid <- submit borrower do
+    createCmd Holding with
+      issuer = borrower
+      owner = borrower
+      amount = 1000.01
+      assetType = LoanAsset
+
+  submitMustFail borrower do
+    exerciseCmd loanCid Repay with repaymentHoldingCid
