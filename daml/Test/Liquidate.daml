@@ -1,0 +1,216 @@
+module Test.Liquidate where
+
+import DA.Assert ((===))
+import Daml.Script
+import Holding
+import Loan (Loan(..), Liquidate(..))
+import LoanOffer (LoanOffer(..), Match(..))
+import LoanRequest (LoanRequest(..))
+import Price
+import Types (AssetType(..))
+
+-- | Sets up a matched Loan with 3.0 CollateralAsset (@ 2000 = 6000 value
+-- initially, CR = 6.0, well above threshold) so the caller can control
+-- undercollateralization by republishing the Oracle price.
+-- Returns (lender, borrower, operator, oracle, liquidator, loanCid, collateralPriceCid).
+setupLiquidatableLoan : Script (Party, Party, Party, Party, Party, ContractId Loan, ContractId Price)
+setupLiquidatableLoan = do
+  lender <- allocateParty "Lender"
+  borrower <- allocateParty "Borrower"
+  operator <- allocateParty "Operator"
+  oracle <- allocateParty "Oracle"
+  liquidator <- allocateParty "Liquidator"
+
+  loanPriceCid <- submit oracle do
+    createCmd Price with
+      oracle
+      assetType = LoanAsset
+      value = 1.0
+      observers = [operator, lender, borrower]
+
+  collateralPriceCid <- submit oracle do
+    createCmd Price with
+      oracle
+      assetType = CollateralAsset
+      value = 2000.0
+      observers = [operator, lender, borrower, liquidator]
+
+  lenderHoldingCid <- submit lender do
+    createCmd Holding with
+      issuer = lender
+      owner = lender
+      amount = 1000.0
+      assetType = LoanAsset
+
+  collateralHoldingCid <- submit borrower do
+    createCmd Holding with
+      issuer = borrower
+      owner = borrower
+      amount = 3.0
+      assetType = CollateralAsset
+
+  offerCid <- submit lender do
+    createCmd LoanOffer with
+      lender
+      operator
+      amount = 1000.0
+      minRate = 0.05
+
+  requestCid <- submit borrower do
+    createCmd LoanRequest with
+      borrower
+      operator
+      amount = 1000.0
+      collateralAssetType = CollateralAsset
+      collateralAmount = 3.0
+      maxRate = 0.15
+
+  loanCid <- submit (actAs [operator, lender, borrower]) do
+    exerciseCmd offerCid Match with
+      loanRequestCid = requestCid
+      borrower
+      lenderHoldingCid
+      collateralHoldingCid
+      loanAssetPriceCid = loanPriceCid
+      collateralAssetPriceCid = collateralPriceCid
+      rate = 0.10
+      liquidators = [liquidator]
+
+  pure (lender, borrower, operator, oracle, liquidator, loanCid, collateralPriceCid)
+
+-- | Price drops from 2000 to 400:
+--   CR = (3.0 * 400) / 1000 = 1.2, below the 1.5 threshold.
+-- Liquidator receives bonus: 5% * 3.0 = 0.15 CollateralAsset.
+-- Remainder 2.85 > owed-in-collateral 2.5 (= 1000/400), so:
+--   Lender receives 2.5, Borrower receives surplus 0.35.
+-- Loan is archived.
+testLiquidation : Script ()
+testLiquidation = do
+  (lender, borrower, _operator, oracle, liquidator, loanCid, collateralPriceCid) <- setupLiquidatableLoan
+
+  newCollateralPriceCid <- submit oracle do
+    exerciseCmd collateralPriceCid Republish with
+      newValue = 400.0
+      newObservers = [lender, borrower, liquidator]
+
+  submit liquidator do
+    exerciseCmd loanCid Liquidate with
+      liquidator
+      collateralPriceCid = newCollateralPriceCid
+
+  -- Loan is archived (Liquidate is a consuming choice)
+  loanView <- queryContractId borrower loanCid
+  loanView === None
+
+  -- Liquidator gets 5% of 3.0 = 0.15 CollateralAsset
+  liquidatorHoldings <- query @Holding liquidator
+  any (\(_, h) -> h.owner == liquidator && h.amount == 0.15 && h.assetType == CollateralAsset) liquidatorHoldings === True
+
+  -- Lender gets owed-in-collateral = 1000/400 = 2.5 CollateralAsset
+  lenderHoldings <- query @Holding lender
+  any (\(_, h) -> h.owner == lender && h.amount == 2.5 && h.assetType == CollateralAsset) lenderHoldings === True
+
+  -- Borrower gets surplus = 2.85 - 2.5 = 0.35 CollateralAsset
+  borrowerHoldings <- query @Holding borrower
+  any (\(_, h) -> h.owner == borrower && h.amount == 0.35 && h.assetType == CollateralAsset) borrowerHoldings === True
+
+-- | A healthy Loan (CR = 6.0 at original price 2000) cannot be liquidated.
+testHealthyLoanCannotBeLiquidated : Script ()
+testHealthyLoanCannotBeLiquidated = do
+  (_lender, _borrower, _operator, _oracle, liquidator, loanCid, collateralPriceCid) <- setupLiquidatableLoan
+
+  submitMustFail liquidator do
+    exerciseCmd loanCid Liquidate with
+      liquidator
+      collateralPriceCid
+
+-- | Bad-debt liquidation: 2.0 collateral, price drops to 500.
+--   CR = (2.0 * 500) / 1000 = 1.0 < 1.5, Loan is undercollateralized.
+-- Bonus = 5% * 2.0 = 0.1; remainder = 1.9.
+-- Owed-in-collateral = 1000/500 = 2.0; 1.9 < 2.0 → bad-debt case.
+-- Lender receives 1.9 (absorbs the shortfall), no error.
+testBadDebtLiquidation : Script ()
+testBadDebtLiquidation = do
+  lender <- allocateParty "Lender"
+  borrower <- allocateParty "Borrower"
+  operator <- allocateParty "Operator"
+  oracle <- allocateParty "Oracle"
+  liquidator <- allocateParty "Liquidator"
+
+  loanPriceCid <- submit oracle do
+    createCmd Price with
+      oracle
+      assetType = LoanAsset
+      value = 1.0
+      observers = [operator, lender, borrower]
+
+  collateralPriceCid <- submit oracle do
+    createCmd Price with
+      oracle
+      assetType = CollateralAsset
+      value = 2000.0
+      observers = [operator, lender, borrower, liquidator]
+
+  lenderHoldingCid <- submit lender do
+    createCmd Holding with
+      issuer = lender
+      owner = lender
+      amount = 1000.0
+      assetType = LoanAsset
+
+  collateralHoldingCid <- submit borrower do
+    createCmd Holding with
+      issuer = borrower
+      owner = borrower
+      amount = 2.0
+      assetType = CollateralAsset
+
+  offerCid <- submit lender do
+    createCmd LoanOffer with
+      lender
+      operator
+      amount = 1000.0
+      minRate = 0.05
+
+  requestCid <- submit borrower do
+    createCmd LoanRequest with
+      borrower
+      operator
+      amount = 1000.0
+      collateralAssetType = CollateralAsset
+      collateralAmount = 2.0
+      maxRate = 0.15
+
+  loanCid <- submit (actAs [operator, lender, borrower]) do
+    exerciseCmd offerCid Match with
+      loanRequestCid = requestCid
+      borrower
+      lenderHoldingCid
+      collateralHoldingCid
+      loanAssetPriceCid = loanPriceCid
+      collateralAssetPriceCid = collateralPriceCid
+      rate = 0.10
+      liquidators = [liquidator]
+
+  -- Drop price to 500: CR = (2.0 * 500) / 1000 = 1.0 < 1.5
+  newCollateralPriceCid <- submit oracle do
+    exerciseCmd collateralPriceCid Republish with
+      newValue = 500.0
+      newObservers = [lender, borrower, liquidator]
+
+  submit liquidator do
+    exerciseCmd loanCid Liquidate with
+      liquidator
+      collateralPriceCid = newCollateralPriceCid
+
+  -- Loan is archived
+  loanView <- queryContractId borrower loanCid
+  loanView === None
+
+  -- Liquidator gets 0.05 * 2.0 = 0.1 CollateralAsset
+  liquidatorHoldings <- query @Holding liquidator
+  any (\(_, h) -> h.owner == liquidator && h.amount == 0.1 && h.assetType == CollateralAsset) liquidatorHoldings === True
+
+  -- Lender gets remainder 1.9 (less than owed-in-collateral 2.0 — bad debt absorbed)
+  lenderHoldings <- query @Holding lender
+  any (\(_, h) -> h.owner == lender && h.amount == 1.9 && h.assetType == CollateralAsset) lenderHoldings === True

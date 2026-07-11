@@ -11,3 +11,9 @@ liquidationThreshold = 1.5
 -- since rate is an annualized figure.
 secondsPerYear : Decimal
 secondsPerYear = 365.0 * 24.0 * 3600.0
+
+-- | Fraction of seized collateral awarded to the Liquidator as an
+-- incentive bonus (conventional DeFi 5% rate, hardcoded like
+-- liquidationThreshold — not governed).
+liquidationBonus : Decimal
+liquidationBonus = 0.05

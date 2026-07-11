@@ -72,6 +72,7 @@ testHappyPathMatch = do
       loanAssetPriceCid = loanPriceCid
       collateralAssetPriceCid = collateralPriceCid
       rate = 0.06
+      liquidators = []
 
   Some loan <- queryContractId lender loanCid
   loan.lender === lender
@@ -163,3 +164,4 @@ testInsufficientCollateralCannotBeMatched = do
       loanAssetPriceCid = loanPriceCid
       collateralAssetPriceCid = collateralPriceCid
       rate = 0.06
+      liquidators = []

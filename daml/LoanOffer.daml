@@ -42,7 +42,8 @@ template LoanOffer
         loanAssetPriceCid : ContractId Price
         collateralAssetPriceCid : ContractId Price
         rate : Decimal
-      controller operator, lender, borrower 
+        liquidators : [Party]
+      controller operator, lender, borrower
       do
         request <- fetch loanRequestCid
         assertMsg "Loan Request must belong to the given Borrower" (request.borrower == borrower)
@@ -77,6 +78,7 @@ template LoanOffer
           collateralAmount = request.collateralAmount
           rate
           lastUpdated = now
+          liquidators
 
 -- --------QUESTIONS----------
 -- | 1. It feels like bad practice to pass in a party as a parameter in the choice and also let it be a controller. I remeber something called controller source. Where anyone with a visibility can pass themselves to be a controller. Which can be an issue. Might not be in this case but just wanted to note this here.

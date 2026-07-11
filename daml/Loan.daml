@@ -1,8 +1,9 @@
 module Loan where
 
 import DA.Time (subTime, convertRelTimeToMicroseconds)
-import Constants (secondsPerYear)
+import Constants (secondsPerYear, liquidationThreshold, liquidationBonus)
 import Holding (Holding(..), Transfer(..), Lock(..))
+import Price (Price(..))
 import Types (AssetType(..))
 
 -- | A bilateral contract between exactly one Lender and Borrower, created
@@ -18,8 +19,10 @@ template Loan
     collateralAmount : Decimal
     rate : Decimal
     lastUpdated : Time
+    liquidators : [Party]
   where
     signatory lender, borrower
+    observer liquidators
 
     -- | Borrower repays up to the current Outstanding Balance out of a
     -- Loan Asset Holding they own. Repaying exactly the Outstanding
@@ -70,6 +73,60 @@ template Loan
         assertMsg "additional collateral must match the Loan's collateral asset type" (additionalCollateral.assetType == collateralAssetType)
         exercise additionalCollateralCid Lock
         create this with collateralAmount = collateralAmount + additionalCollateral.amount
+
+    -- | Any Liquidator can seize all locked collateral when the Loan's
+    -- Collateral Ratio falls below the Liquidation Threshold. The Liquidator
+    -- receives a hardcoded bonus fraction; the remainder goes to the Lender
+    -- up to the Outstanding Balance in collateral terms; any surplus above
+    -- that returns to the Borrower. In bad-debt (remainder < owed), the
+    -- Lender absorbs the shortfall with no error.
+    --
+    -- Note: in a real Canton deployment the liquidator would need the Loan
+    -- disclosed to them (e.g. via an observer list or out-of-band CID share).
+    -- Daml Script does not enforce privacy so the test works without it.
+    choice Liquidate : ()
+      with
+        liquidator : Party
+        collateralPriceCid : ContractId Price
+      controller liquidator
+      do
+        now <- getTime
+        collateralPrice <- fetch collateralPriceCid
+        assertMsg "price must be for the collateral asset type" (collateralPrice.assetType == collateralAssetType)
+        let owed = outstandingBalanceAt this now
+            collateralValue = collateralAmount * collateralPrice.value
+            collateralRatio = collateralValue / owed
+        assertMsg "Loan is not undercollateralized" (collateralRatio < liquidationThreshold)
+        let bonusAmount = collateralAmount * liquidationBonus
+            remainderAmount = collateralAmount - bonusAmount
+            owedInCollateral = owed / collateralPrice.value
+        _ <- create Holding with
+          issuer = borrower
+          owner = liquidator
+          amount = bonusAmount
+          assetType = collateralAssetType
+        if remainderAmount <= owedInCollateral
+          then do
+            -- Bad-debt: lender receives all remaining collateral; shortfall absorbed
+            _ <- create Holding with
+              issuer = borrower
+              owner = lender
+              amount = remainderAmount
+              assetType = collateralAssetType
+            pure ()
+          else do
+            -- Normal: lender receives debt-equivalent collateral; surplus to borrower
+            _ <- create Holding with
+              issuer = borrower
+              owner = lender
+              amount = owedInCollateral
+              assetType = collateralAssetType
+            _ <- create Holding with
+              issuer = borrower
+              owner = borrower
+              amount = remainderAmount - owedInCollateral
+              assetType = collateralAssetType
+            pure ()
 
 -- | Principal plus Accrued Interest (principal x rate x years elapsed
 -- since lastUpdated), computed on demand rather than stored (CONTEXT.md).

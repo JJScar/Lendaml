@@ -74,6 +74,7 @@ setupLoan = do
       loanAssetPriceCid = loanPriceCid
       collateralAssetPriceCid = collateralPriceCid
       rate = 0.10
+      liquidators = []
 
   pure (lender, borrower, operator, loanCid)
 
