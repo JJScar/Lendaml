@@ -1,0 +1,28 @@
+module Price where
+
+import Types (AssetType)
+
+-- | Oracle-signed statement of an asset's current value (CONTEXT.md).
+-- Contract keys aren't available on Daml 3.4's default LF (unsupported
+-- for multi-domain Canton), so supersession isn't ledger-enforced via a
+-- uniqueness key. Instead, Republish is the sanctioned way to update a
+-- Price: a consuming choice that archives the existing contract and
+-- creates the new one in the same transaction, so there's never a gap
+-- where both are active.
+template Price
+  with
+    oracle : Party
+    assetType : AssetType
+    value : Decimal
+    observers : [Party]
+  where
+    signatory oracle
+    observer observers
+
+    choice Republish : ContractId Price
+      with
+        newValue : Decimal
+        newObservers : [Party]
+      controller oracle
+      do
+        create this with value = newValue, observers = newObservers

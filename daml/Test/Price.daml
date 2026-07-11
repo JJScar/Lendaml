@@ -1,0 +1,74 @@
+module Test.Price where
+
+import DA.Assert ((===))
+import Daml.Script
+import Price
+import Types (AssetType(..))
+
+-- | Oracle publishes a Price for both asset types; a Loan-relevant party
+-- (here, a Lender) reads the current value of each.
+testOraclePublishesPrice : Script ()
+testOraclePublishesPrice = do
+  oracle <- allocateParty "Oracle"
+  lender <- allocateParty "Lender"
+
+  loanPriceCid <- submit oracle do
+    createCmd Price with
+      oracle = oracle
+      assetType = LoanAsset
+      value = 1.0
+      observers = [lender]
+
+  collateralPriceCid <- submit oracle do
+    createCmd Price with
+      oracle = oracle
+      assetType = CollateralAsset
+      value = 2000.0
+      observers = [lender]
+
+  Some loanPrice <- queryContractId lender loanPriceCid
+  loanPrice.value === 1.0
+  loanPrice.assetType === LoanAsset
+
+  Some collateralPrice <- queryContractId lender collateralPriceCid
+  collateralPrice.value === 2000.0
+  collateralPrice.assetType === CollateralAsset
+
+-- | A non-Oracle party cannot create a Price signed by the Oracle.
+testNonOracleCannotPublish : Script ()
+testNonOracleCannotPublish = do
+  oracle <- allocateParty "Oracle"
+  outsider <- allocateParty "Outsider"
+
+  submitMustFail outsider do
+    createCmd Price with
+      oracle = oracle
+      assetType = LoanAsset
+      value = 1.0
+      observers = []
+
+-- | Publishing a new Price for an asset supersedes the prior one: the old
+-- contract is archived and no longer queryable, and only the new value
+-- is current.
+testPublishSupersedesPrior : Script ()
+testPublishSupersedesPrior = do
+  oracle <- allocateParty "Oracle"
+  lender <- allocateParty "Lender"
+
+  originalCid <- submit oracle do
+    createCmd Price with
+      oracle = oracle
+      assetType = LoanAsset
+      value = 1.0
+      observers = [lender]
+
+  updatedCid <- submit oracle do
+    exerciseCmd originalCid Republish with
+      newValue = 1.05
+      newObservers = [lender]
+
+  originalAfter <- queryContractId lender originalCid
+  originalAfter === None
+
+  Some updated <- queryContractId lender updatedCid
+  updated.value === 1.05
