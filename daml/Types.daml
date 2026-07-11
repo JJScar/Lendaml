@@ -4,4 +4,7 @@ module Types where
 data AssetType
   = LoanAsset
   | CollateralAsset
-  deriving (Eq, Show, Ord)
+  deriving (Eq, Show, Ord) 
+
+-- --------QUESTIONS----------
+-- | 1. What are `Eq, Show, Ord`?

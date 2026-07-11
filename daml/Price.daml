@@ -26,3 +26,6 @@ template Price
       controller oracle
       do
         create this with value = newValue, observers = newObservers
+
+-- --------QUESTIONS----------
+-- | 1. Is it not possible to use something like Chainlink on Canton rather than do this? I am not sure of what are the best practices for Canton development with oracles. 

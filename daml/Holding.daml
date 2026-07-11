@@ -28,3 +28,8 @@ template Holding
       controller owner
       do
         pure ()
+
+
+-- --------QUESTIONS----------
+-- | 1. Why not use the CIP56 standard here? Make this project a little more relevant and real use case ready? Might be better for my portfolio... I do get why we are locking the asset while it is loanded (so Owner cannot take it whenever they want) but still. 
+-- | 2. Why are we implementing a new asset issuence template? Should we not assume that borrowers and lenders come to our protocol with assets already?

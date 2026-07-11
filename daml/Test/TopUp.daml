@@ -1,0 +1,58 @@
+module Test.TopUp where
+
+import DA.Assert ((===))
+import Daml.Script
+import Holding
+import Loan (TopUp(..))
+import Test.Repay (setupLoan)
+import Types (AssetType(..))
+
+-- | Borrower locks an additional 0.5 CollateralAsset into the Loan.
+-- The Loan's locked collateral amount increases from 2.0 to 2.5;
+-- all other fields (principal, rate, lender, borrower) are unchanged.
+-- The additional Holding is consumed (locked) and no longer visible.
+testTopUpCollateral : Script ()
+testTopUpCollateral = do
+  (lender, borrower, _operator, loanCid) <- setupLoan
+
+  additionalCollateralCid <- submit borrower do
+    createCmd Holding with
+      issuer = borrower
+      owner = borrower
+      amount = 0.5
+      assetType = CollateralAsset
+
+  newLoanCid <- submit borrower do
+    exerciseCmd loanCid TopUp with additionalCollateralCid
+
+  -- old Loan is archived (TopUp is consuming)
+  oldLoanView <- queryContractId borrower loanCid
+  oldLoanView === None
+
+  -- new Loan has increased collateral; all other fields unchanged
+  Some newLoan <- queryContractId borrower newLoanCid
+  newLoan.collateralAmount === 2.5
+  newLoan.principal === 1000.0
+  newLoan.rate === 0.10
+  newLoan.collateralAssetType === CollateralAsset
+  newLoan.lender === lender
+  newLoan.borrower === borrower
+
+  -- the additional collateral Holding was locked (consumed)
+  additionalView <- queryContractId borrower additionalCollateralCid
+  additionalView === None
+
+-- | Topping up with the wrong asset type is rejected.
+testCannotTopUpWithWrongAssetType : Script ()
+testCannotTopUpWithWrongAssetType = do
+  (_, borrower, _operator, loanCid) <- setupLoan
+
+  wrongAssetCid <- submit borrower do
+    createCmd Holding with
+      issuer = borrower
+      owner = borrower
+      amount = 1.0
+      assetType = LoanAsset
+
+  submitMustFail borrower do
+    exerciseCmd loanCid TopUp with additionalCollateralCid = wrongAssetCid

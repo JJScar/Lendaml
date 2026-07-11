@@ -2,7 +2,7 @@ module Loan where
 
 import DA.Time (subTime, convertRelTimeToMicroseconds)
 import Constants (secondsPerYear)
-import Holding (Holding(..), Transfer(..))
+import Holding (Holding(..), Transfer(..), Lock(..))
 import Types (AssetType(..))
 
 -- | A bilateral contract between exactly one Lender and Borrower, created
@@ -56,6 +56,20 @@ template Loan
               principal = owed - repaymentHolding.amount
               lastUpdated = now
             pure (Some newLoanCid)
+
+    -- | Borrower locks additional Collateral Asset into the Loan, increasing
+    -- the locked collateral amount and improving the Collateral Ratio without
+    -- touching the principal or interest clock.
+    choice TopUp : ContractId Loan
+      with
+        additionalCollateralCid : ContractId Holding
+      controller borrower
+      do
+        additionalCollateral <- fetch additionalCollateralCid
+        assertMsg "additional collateral must belong to the Borrower" (additionalCollateral.owner == borrower)
+        assertMsg "additional collateral must match the Loan's collateral asset type" (additionalCollateral.assetType == collateralAssetType)
+        exercise additionalCollateralCid Lock
+        create this with collateralAmount = collateralAmount + additionalCollateral.amount
 
 -- | Principal plus Accrued Interest (principal x rate x years elapsed
 -- since lastUpdated), computed on demand rather than stored (CONTEXT.md).
