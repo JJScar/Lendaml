@@ -72,3 +72,35 @@ testPublishSupersedesPrior = do
 
   Some updated <- queryContractId lender updatedCid
   updated.value === 1.05
+
+-- | A Price cannot be created, or Republished, with a zero or negative value.
+testNonPositiveValueRejected : Script ()
+testNonPositiveValueRejected = do
+  oracle <- allocateParty "Oracle"
+  lender <- allocateParty "Lender"
+
+  submitMustFail oracle do
+    createCmd Price with
+      oracle
+      assetType = LoanAsset
+      value = 0.0
+      observers = [lender]
+
+  submitMustFail oracle do
+    createCmd Price with
+      oracle
+      assetType = LoanAsset
+      value = -1.0
+      observers = [lender]
+
+  originalCid <- submit oracle do
+    createCmd Price with
+      oracle
+      assetType = LoanAsset
+      value = 1.0
+      observers = [lender]
+
+  submitMustFail oracle do
+    exerciseCmd originalCid Republish with
+      newValue = -5.0
+      newObservers = [lender]

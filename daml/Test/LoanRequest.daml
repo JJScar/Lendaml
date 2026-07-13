@@ -57,3 +57,48 @@ testVisibility = do
 
   otherBorrowerView <- queryContractId otherBorrower requestCid
   otherBorrowerView === None
+
+-- | A Loan Request cannot be created with a non-positive amount.
+testNonPositiveAmountRejected : Script ()
+testNonPositiveAmountRejected = do
+  borrower <- allocateParty "Borrower"
+  operator <- allocateParty "Operator"
+
+  submitMustFail borrower do
+    createCmd LoanRequest with
+      borrower = borrower
+      operator = operator
+      amount = 0.0
+      collateralAssetType = CollateralAsset
+      collateralAmount = 1.0
+      maxRate = 0.08
+
+-- | A Loan Request cannot be created with a non-positive collateralAmount.
+testNonPositiveCollateralAmountRejected : Script ()
+testNonPositiveCollateralAmountRejected = do
+  borrower <- allocateParty "Borrower"
+  operator <- allocateParty "Operator"
+
+  submitMustFail borrower do
+    createCmd LoanRequest with
+      borrower = borrower
+      operator = operator
+      amount = 1000.0
+      collateralAssetType = CollateralAsset
+      collateralAmount = -1.0
+      maxRate = 0.08
+
+-- | A Loan Request cannot be created with a negative maxRate.
+testNegativeMaxRateRejected : Script ()
+testNegativeMaxRateRejected = do
+  borrower <- allocateParty "Borrower"
+  operator <- allocateParty "Operator"
+
+  submitMustFail borrower do
+    createCmd LoanRequest with
+      borrower = borrower
+      operator = operator
+      amount = 1000.0
+      collateralAssetType = CollateralAsset
+      collateralAmount = 1.0
+      maxRate = -0.01

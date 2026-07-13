@@ -124,6 +124,25 @@ testHealthyLoanCannotBeLiquidated = do
       liquidator
       collateralPriceCid
 
+-- | A party not listed in the Loan's `liquidators` field cannot liquidate
+-- it, even when the Loan is undercollateralized and they supply a valid
+-- Price — liquidation rights are enforced by the contract, not just by
+-- visibility into it.
+testUnauthorizedLiquidatorCannotLiquidate : Script ()
+testUnauthorizedLiquidatorCannotLiquidate = do
+  (lender, borrower, _operator, oracle, liquidator, loanCid, collateralPriceCid) <- setupLiquidatableLoan
+  outsider <- allocateParty "Outsider"
+
+  newCollateralPriceCid <- submit oracle do
+    exerciseCmd collateralPriceCid Republish with
+      newValue = 400.0
+      newObservers = [lender, borrower, liquidator, outsider]
+
+  submitMustFail outsider do
+    exerciseCmd loanCid Liquidate with
+      liquidator = outsider
+      collateralPriceCid = newCollateralPriceCid
+
 -- | Bad-debt liquidation: 2.0 collateral, price drops to 500.
 --   CR = (2.0 * 500) / 1000 = 1.0 < 1.5, Loan is undercollateralized.
 -- Bonus = 5% * 2.0 = 0.1; remainder = 1.9.

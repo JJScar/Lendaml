@@ -20,6 +20,7 @@ template LoanOffer
   where
     signatory lender
     observer operator
+    ensure amount > 0.0 && minRate >= 0.0
 
     choice Cancel : ()
       controller lender

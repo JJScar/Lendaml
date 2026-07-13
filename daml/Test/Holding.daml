@@ -82,3 +82,22 @@ testVisibility = do
 
   outsiderViewAfterTransfer <- queryContractId outsider transferredCid
   outsiderViewAfterTransfer === None
+
+-- | A Holding cannot be created with a zero or negative amount.
+testNonPositiveAmountRejected : Script ()
+testNonPositiveAmountRejected = do
+  lender <- allocateParty "Lender"
+
+  submitMustFail lender do
+    createCmd Holding with
+      issuer = lender
+      owner = lender
+      amount = 0.0
+      assetType = LoanAsset
+
+  submitMustFail lender do
+    createCmd Holding with
+      issuer = lender
+      owner = lender
+      amount = -100.0
+      assetType = LoanAsset

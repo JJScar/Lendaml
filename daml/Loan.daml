@@ -7,9 +7,9 @@ import Price (Price(..))
 import Types (AssetType(..))
 
 -- | A bilateral contract between exactly one Lender and Borrower, created
--- when the Operator matches a Loan Offer to a Loan Request (CONTEXT.md).
+-- when the Operator matches a Loan Offer to a Loan Request.
 -- Signed by Lender and Borrower only — the Operator holds no ongoing
--- signatory or observer role once the Loan exists (ADR 0003).
+-- signatory or observer role once the Loan exists.
 template Loan
   with
     lender : Party
@@ -23,14 +23,15 @@ template Loan
   where
     signatory lender, borrower
     observer liquidators
+    ensure principal > 0.0 && collateralAmount > 0.0 && rate >= 0.0
 
     -- | Borrower repays up to the current Outstanding Balance out of a
     -- Loan Asset Holding they own. Repaying exactly the Outstanding
     -- Balance closes the Loan and releases all remaining collateral back
     -- to the Borrower. A smaller amount folds the interest accrued so far
     -- into principal and resets the interest clock (lastUpdated = now),
-    -- leaving the Loan open with a lower balance (spec: "Repayment"
-    -- decision) — there is no separate Holding-splitting choice, so the
+    -- leaving the Loan open with a lower balance.
+    -- there is no separate Holding-splitting choice, so the
     -- repaid amount is whatever the supplied Holding is worth.
     choice Repay : Optional (ContractId Loan)
       with
@@ -90,6 +91,7 @@ template Loan
         collateralPriceCid : ContractId Price
       controller liquidator
       do
+        assertMsg "controller must be an authorized liquidator" (liquidator `elem` liquidators)
         now <- getTime
         collateralPrice <- fetch collateralPriceCid
         assertMsg "price must be for the collateral asset type" (collateralPrice.assetType == collateralAssetType)

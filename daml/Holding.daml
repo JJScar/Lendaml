@@ -13,6 +13,7 @@ template Holding
   where
     signatory issuer
     observer owner
+    ensure amount > 0.0
 
     choice Transfer : ContractId Holding
       with

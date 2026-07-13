@@ -18,6 +18,7 @@ template Price
   where
     signatory oracle
     observer observers
+    ensure value > 0.0
 
     choice Republish : ContractId Price
       with

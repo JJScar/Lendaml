@@ -3,6 +3,7 @@ module Test.Loan where
 import DA.Assert ((===))
 import Daml.Script
 import Holding
+import Loan (Loan(..))
 import LoanOffer (LoanOffer(..), Match(..))
 import LoanRequest (LoanRequest(..))
 import Price
@@ -164,4 +165,47 @@ testInsufficientCollateralCannotBeMatched = do
       loanAssetPriceCid = loanPriceCid
       collateralAssetPriceCid = collateralPriceCid
       rate = 0.06
+      liquidators = []
+
+-- | A Loan can never exist with a non-positive principal, a non-positive
+-- collateralAmount, or a negative rate. `LoanOffer`/`LoanRequest`'s own
+-- `ensure` clauses already prevent reaching these via `Match`, so this
+-- goes straight at `Loan`'s `ensure` with a direct `createCmd`.
+testInvalidLoanRejected : Script ()
+testInvalidLoanRejected = do
+  lender <- allocateParty "Lender"
+  borrower <- allocateParty "Borrower"
+  now <- getTime
+
+  submitMustFail (actAs [lender, borrower]) do
+    createCmd Loan with
+      lender
+      borrower
+      principal = 0.0
+      collateralAssetType = CollateralAsset
+      collateralAmount = 1.0
+      rate = 0.05
+      lastUpdated = now
+      liquidators = []
+
+  submitMustFail (actAs [lender, borrower]) do
+    createCmd Loan with
+      lender
+      borrower
+      principal = 1000.0
+      collateralAssetType = CollateralAsset
+      collateralAmount = -1.0
+      rate = 0.05
+      lastUpdated = now
+      liquidators = []
+
+  submitMustFail (actAs [lender, borrower]) do
+    createCmd Loan with
+      lender
+      borrower
+      principal = 1000.0
+      collateralAssetType = CollateralAsset
+      collateralAmount = 1.0
+      rate = -0.01
+      lastUpdated = now
       liquidators = []

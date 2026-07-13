@@ -50,3 +50,29 @@ testVisibility = do
 
   otherLenderView <- queryContractId otherLender offerCid
   otherLenderView === None
+
+-- | A Loan Offer cannot be created with a non-positive amount.
+testNonPositiveAmountRejected : Script ()
+testNonPositiveAmountRejected = do
+  lender <- allocateParty "Lender"
+  operator <- allocateParty "Operator"
+
+  submitMustFail lender do
+    createCmd LoanOffer with
+      lender = lender
+      operator = operator
+      amount = 0.0
+      minRate = 0.05
+
+-- | A Loan Offer cannot be created with a negative minRate.
+testNegativeMinRateRejected : Script ()
+testNegativeMinRateRejected = do
+  lender <- allocateParty "Lender"
+  operator <- allocateParty "Operator"
+
+  submitMustFail lender do
+    createCmd LoanOffer with
+      lender = lender
+      operator = operator
+      amount = 1000.0
+      minRate = -0.01

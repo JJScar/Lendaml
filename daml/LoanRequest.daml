@@ -18,6 +18,7 @@ template LoanRequest
   where
     signatory borrower
     observer operator
+    ensure amount > 0.0 && collateralAmount > 0.0 && maxRate >= 0.0
 
     choice Cancel : ()
       controller borrower
